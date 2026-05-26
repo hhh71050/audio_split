@@ -16,3 +16,4 @@ env/
 # --- 自定义屏蔽的文件夹 ---
 records/
 excel_named_wavs/
+*.xlsx
