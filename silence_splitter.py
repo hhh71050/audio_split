@@ -185,8 +185,8 @@ if __name__ == "__main__":
     parser.add_argument("-cn", "--column-name", default="快乐", help="目标列名")
     parser.add_argument("-err", "--error-segments", default="", help="录制者漏报/误录的序号")
 
-    parser.add_argument("--silence-threshold", type=float, default=0.03, help="声音判定阈值")
-    parser.add_argument("--min-silence", type=float, default=1.5, help="断句最短静音秒数")
+    parser.add_argument("--silence-threshold", type=float, default=0.05, help="声音判定阈值")
+    parser.add_argument("--min-silence", type=float, default=0.7, help="断句最短静音秒数")
     parser.add_argument("--buffer", type=float, default=0.3, help="首尾留白秒数")
     parser.add_argument("--min-duration", type=float, default=1.0, help="最小有效时长")
 
