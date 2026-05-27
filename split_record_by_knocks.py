@@ -183,7 +183,7 @@ if __name__ == "__main__":
     parser.add_argument("-c", "--channel", type=int, default=0, help="目标声道索引 (默认 0)")
     parser.add_argument("-o", "--output-dir", default="split_wavs", help="输出目录 (默认 split_wavs)")
 
-    # 阈值参数
+    # 阈值参数 (threshold parameters)
     parser.add_argument("--knock-threshold", type=float, default=0.5, help="敲击声触发阈值 (默认 0.5)")
     parser.add_argument("--knock-gap", type=float, default=2.0, help="敲击合并窗口秒数 (默认 2.0)")
     parser.add_argument("--silence-threshold", type=float, default=0.02, help="VAD 静音剔除阈值 (默认 0.02)")
