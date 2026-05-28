@@ -140,20 +140,22 @@ def process_directory(args):
         for idx, (seg_start, seg_end) in enumerate(segments, start=1):
             final_seg = mono_data[seg_start:seg_end]
 
-            # 1. 触发误读漏报隔离逻辑
+            # 当前物理序号是录制者告知的“直接废弃不做重读”的序号
             if idx_counter in error_set:
-                # 即使是废片，也带上它原本想对齐的单元格坐标作为前缀，方便你听声音核对是不是这一句读错了
                 if target_col_letter:
                     cell_coord = f"{target_col_letter}{current_row}"
-                    file_name = f"{cell_coord}_[误读废片]_{args.column_name}.wav"
+                    # 此时它对应的依然是当前行文本，但它是废片
+                    file_name = f"{cell_coord}_[废弃不做重读]_{args.column_name}.wav"
                 else:
-                    file_name = f"Row{current_row}_[误读废片]_{args.column_name}.wav"
+                    file_name = f"Row{current_row}_[废弃不做重读]_{args.column_name}.wav"
 
                 sf.write(output_dir / file_name, final_seg, sample_rate)
-                print(f"    [!] 片段 {idx} 命中误读 (序号 {idx_counter}) -> 已隔离为: {file_name}")
+                print(f"    [!] 片段 {idx} 属于废弃不重读行 (序号 {idx_counter}) -> 已隔离为: {file_name}")
 
+                # 让 Excel 指针同步向下移动一行，去对齐接下来的正常音频！
+                current_row += 1
                 idx_counter += 1  # 名义序号递增
-                continue          # 保持 current_row 不变，直接跳过本片段
+                continue
 
             # 2. 正常切片动态命名逻辑
             if sheet is not None and target_col_letter is not None:
@@ -186,10 +188,10 @@ if __name__ == "__main__":
     parser.add_argument("-cn", "--column-name", default="快乐", help="目标列名")
     parser.add_argument("-err", "--error-segments", default="", help="录制者漏报/误录的序号")
 
-    parser.add_argument("--silence-threshold", type=float, default=0.03, help="声音判定阈值")
-    parser.add_argument("--min-silence", type=float, default=0.8, help="断句最短静音秒数")
+    parser.add_argument("--silence-threshold", type=float, default=0.05, help="声音判定阈值")
+    parser.add_argument("--min-silence", type=float, default=0.7, help="断句最短静音秒数")
     parser.add_argument("--buffer", type=float, default=0.3, help="首尾留白秒数")
-    parser.add_argument("--min-duration", type=float, default=1.5, help="最小有效时长")
+    parser.add_argument("--min-duration", type=float, default=1.0, help="最小有效时长")
 
     args = parser.parse_args()
     process_directory(args)
