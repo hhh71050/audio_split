@@ -42,7 +42,7 @@ def remove_duplicates_by_text(in_file, out_file='去重后结果.xlsx'):
 
 # ==================== 参数配置 ====================
 # 将你的输入文件路径填写在这里（支持 .xlsx 或 .csv）
-in_file = '录音文本.xlsx' 
+in_file = '录音文本_new.xlsx' 
 
 # 运行去重函数
 remove_duplicates_by_text(in_file)
