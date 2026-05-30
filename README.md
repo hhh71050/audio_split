@@ -214,7 +214,7 @@ python silence_splitter.py input_audio.wav -e data.xlsx -cn 快乐 -err 50
 ### 3. 核对与清洗
 完成核对后，使用辅助去前缀脚本（如有）去除物理坐标前缀，恢复成标准命名并自动清理废片：
 ```bash
-python remove_prefix.py outputs/ --drop-error
+python rename_rm_prefix.py outputs/ --drop-error
 ```
 
 ---
