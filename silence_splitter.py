@@ -12,15 +12,26 @@ except ImportError:
     sys.exit(1)
 
 
-def get_start_idx_from_stem(stem):
+def parse_filename(stem):
     """
-    从输入文件名中提取起始行号
-    例如：'快乐_40-60' -> 40
+    解析文件名获取：列名, 起始行号, 结束行号
+    示例: "愤怒_3827-3846" -> ("愤怒", 3827, 3846)
     """
-    match = re.search(r'(\d+)', stem)
+    match = re.search(r'(.*)_(\d+)-(\d+)', stem)
     if match:
-        return int(match.group(1))
-    return 1
+        return match.group(1), int(match.group(2)), int(match.group(3))
+    
+    # 回退兼容: 只有数字区间 "3827-3846"
+    match_num = re.search(r'(\d+)-(\d+)', stem)
+    if match_num:
+        return "Unknown", int(match_num.group(1)), int(match_num.group(2))
+    
+    # 再回退: 只有起始数字 "3827"
+    match_single = re.search(r'(\d+)', stem)
+    if match_single:
+        return "Unknown", int(match_single.group(1)), None
+        
+    return "Unknown", 1, None
 
 def sanitize_filename(name):
     """安全过滤文件名非法字符，防系统报错"""
@@ -76,7 +87,6 @@ def process_directory(args):
     output_dir.mkdir(exist_ok=True, parents=True)
 
     sheet = None
-    target_col_letter = None
 
     if args.excel:
         excel_path = Path(args.excel)
@@ -87,11 +97,6 @@ def process_directory(args):
         try:
             workbook = openpyxl.load_workbook(excel_path, data_only=True)
             sheet = workbook.active
-            _, target_col_letter = find_column_by_header(sheet, args.column_name)
-            if not target_col_letter:
-                print(f"[!] 错误: 在 Excel 第一行没找到列名为 '{args.column_name}' 的列。")
-                return
-            print(f"  [✔] 成功定位: 列名 '{args.column_name}' 位于 Excel 的 [{target_col_letter}] 列")
         except Exception as e:
             print(f"[!] 无法读取 Excel 文件: {e}")
             return
@@ -112,6 +117,19 @@ def process_directory(args):
     for file_path in wav_files:
         print(f"\n[{'='*40}]")
         print(f"[*] 正在处理长音频: {file_path.name}")
+        
+        # 1. 动态解析文件名信息
+        col_name, start_row, end_row = parse_filename(file_path.stem)
+        expected_count = (end_row - start_row + 1) if end_row else None
+        
+        # 2. 动态匹配 Excel 目标列
+        target_col_letter = None
+        if sheet:
+            _, target_col_letter = find_column_by_header(sheet, col_name)
+            if target_col_letter:
+                print(f"  [✔] 成功定位: 列名 '{col_name}' 位于 Excel 的 [{target_col_letter}] 列")
+            else:
+                print(f"  [!] 警告: 在 Excel 第一行没找到列名为 '{col_name}' 的列。")
 
         try:
             data, sample_rate = sf.read(file_path)
@@ -120,19 +138,28 @@ def process_directory(args):
             continue
 
         mono_data = data[:, args.channel] if data.ndim > 1 else data
-        start_row = get_start_idx_from_stem(file_path.stem)
         print(f"  [*] 对齐 Excel 起始行号: {start_row}")
 
         segments = split_by_silence(
             mono_data, sample_rate, args.silence_threshold,
             args.min_silence, args.buffer, args.min_duration
         )
+        actual_count = len(segments)
 
         if not segments:
             print(f"  [-] 未能在当前文件中切分出有效片段。")
             continue
 
-        print(f"  [*] 实际切出 {len(segments)} 个片段，开始对齐导出...")
+        # 3. 预警校验逻辑
+        if expected_count is not None:
+            if actual_count == expected_count:
+                print(f"  [✔] 数量完美匹配: 预期 {expected_count} 个，实际切出 {actual_count} 个。")
+            else:
+                print(f"  [!] ⚠️ 预警: 切片数量异常！文件名预期区间需要 {expected_count} 个片段，实际却切出 {actual_count} 个。")
+        else:
+            print(f"  [*] 实际切出 {actual_count} 个片段。")
+            
+        print(f"  [*] 开始对齐导出...")
 
         current_row = start_row      # 控制消耗哪一行文本
         idx_counter = start_row      # 控制当前切片的名义物理序号
@@ -145,9 +172,9 @@ def process_directory(args):
                 if target_col_letter:
                     cell_coord = f"{target_col_letter}{current_row}"
                     # 此时它对应的依然是当前行文本，但它是废片
-                    file_name = f"{cell_coord}_[废弃不做重读]_{args.column_name}.wav"
+                    file_name = f"{cell_coord}_[废弃不做重读]_{col_name}.wav"
                 else:
-                    file_name = f"Row{current_row}_[废弃不做重读]_{args.column_name}.wav"
+                    file_name = f"Row{current_row}_[废弃不做重读]_{col_name}.wav"
 
                 sf.write(output_dir / file_name, final_seg, sample_rate)
                 print(f"    [!] 片段 {idx} 属于废弃不重读行 (序号 {idx_counter}) -> 已隔离为: {file_name}")
@@ -157,17 +184,17 @@ def process_directory(args):
                 idx_counter += 1  # 名义序号递增
                 continue
 
-            # 2. 正常切片动态命名逻辑
+            # 正常切片动态命名逻辑
             if sheet is not None and target_col_letter is not None:
                 cell_coord = f"{target_col_letter}{current_row}" # 单元格名称框，如 "B39"
                 raw_cell_value = sheet[cell_coord].value
                 cell_value = sanitize_filename(raw_cell_value)
 
-                # 核心改动：把单元格坐标名称框拼接到最前面
-                file_name = f"{cell_coord}_{args.column_name}_{cell_value}.wav"
+                # 把单元格坐标名称框拼接到最前面
+                file_name = f"{cell_coord}_{col_name}_{cell_value}.wav"
                 log_msg = f"    [+] 导出第 {idx} 个切片: {file_name}"
             else:
-                file_name = f"Row{current_row}_Idx{idx}_{args.column_name}.wav"
+                file_name = f"Row{current_row}_Idx{idx}_{col_name}.wav"
                 log_msg = f"    [+] 导出: {file_name}"
 
             sf.write(output_dir / file_name, final_seg, sample_rate)
@@ -180,17 +207,16 @@ def process_directory(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="纯静音音频切割与 Excel 单元格坐标名称框联动工具")
+    parser = argparse.ArgumentParser(description="自动解析长音频文件名的切割工具")
     parser.add_argument("input", help="输入的音频文件或文件夹")
     parser.add_argument("-o", "--output-dir", default="excel_named_wavs", help="输出目录")
     parser.add_argument("-c", "--channel", type=int, default=0, help="声道索引")
     parser.add_argument("-e", "--excel", default=None, help="Excel文件路径")
-    parser.add_argument("-cn", "--column-name", default="快乐", help="目标列名")
-    parser.add_argument("-err", "--error-segments", default="", help="录制者漏报/误录的序号")
+    parser.add_argument("-err", "--error-segments", default="", help="录制者漏报/误录直接废弃的序号")
 
-    parser.add_argument("--silence-threshold", type=float, default=0.02, help="声音判定阈值")
-    parser.add_argument("--min-silence", type=float, default=0.7, help="断句最短静音秒数")
-    parser.add_argument("--buffer", type=float, default=0.3, help="首尾留白秒数")
+    parser.add_argument("--silence-threshold", type=float, default=0.025, help="声音判定阈值")
+    parser.add_argument("--min-silence", type=float, default=0.5, help="断句最短静音秒数")
+    parser.add_argument("--buffer", type=float, default=0.25, help="首尾留白秒数")
     parser.add_argument("--min-duration", type=float, default=1.2, help="最小有效时长")
 
     args = parser.parse_args()
