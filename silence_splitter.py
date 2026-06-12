@@ -194,7 +194,7 @@ def process_directory(args):
                 file_name = f"{cell_coord}_{col_name}_{cell_value}.wav"
                 log_msg = f"    [+] 导出第 {idx} 个切片: {file_name}"
             else:
-                file_name = f"Row{current_row}_Idx{idx}_{col_name}.wav"
+                file_name = f"{col_name}_Row{current_row}_Idx{idx:02d}.wav"
                 log_msg = f"    [+] 导出: {file_name}"
 
             sf.write(output_dir / file_name, final_seg, sample_rate)
