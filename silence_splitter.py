@@ -150,12 +150,12 @@ def process_directory(args):
             print(f"  [-] 未能在当前文件中切分出有效片段。")
             continue
 
-        # 3. 预警校验逻辑
+        # 3. 警示校验逻辑
         if expected_count is not None:
             if actual_count == expected_count:
                 print(f"  [✔] 数量完美匹配: 预期 {expected_count} 个，实际切出 {actual_count} 个。")
             else:
-                print(f"  [!] ⚠️ 预警: 切片数量异常！文件名预期区间需要 {expected_count} 个片段，实际却切出 {actual_count} 个。")
+                print(f"  [!] ⚠️ Warning: 切片数量异常！文件名预期区间需要 {expected_count} 个片段，实际却切出 {actual_count} 个。")
         else:
             print(f"  [*] 实际切出 {actual_count} 个片段。")
             
