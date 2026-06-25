@@ -217,7 +217,7 @@ if __name__ == "__main__":
     parser.add_argument("--silence-threshold", type=float, default=0.025, help="声音判定阈值")
     parser.add_argument("--min-silence", type=float, default=0.5, help="断句最短静音秒数")
     parser.add_argument("--buffer", type=float, default=0.25, help="首尾留白秒数")
-    parser.add_argument("--min-duration", type=float, default=1.2, help="最小有效时长")
+    parser.add_argument("--min-duration", type=float, default=1.5, help="最小有效时长")
 
     args = parser.parse_args()
     process_directory(args)

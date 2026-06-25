@@ -1,225 +1,102 @@
-# 语音语料自动化切割与对齐工具
+# 🎧 语音语料自动化切分与清洗工具链 (Audio Splitter & Cleaner)
 
-本工具专为批量处理长音频语料设计，支持基于静音检测的自动切片，并能与 Excel 表格自动联动进行命名。特别针对录制过程中出现的“误读/废片”场景，提供了灵活的**平移对齐/直接放弃**容错机制。
+本工具链包含两个高度自动化的 Python 脚本，专为语音大模型训练、ASR（自动语音识别）语料制作及数据标注前期准备而设计。通过将**长录音文件**与 **Excel 文本映射表**进行智能对齐，实现毫秒级精准切分、动态单元格命名、异常片段隔离及后期一键式安全清洗。
 
-## 🛠️ 快速安装
+## 🏗️ 工具链整体工作流
 
-请确保您的 Python 环境中安装了必要的依赖：
-
-```bash
-pip install numpy soundfile openpyxl
+```Text
+[ 原始长录音 .wav ] （如: 愤怒_3827-3846.wav）
+       +
+[ 文本映射表 .xlsx ] --->  (1) silence_splitter.py (VAD 静音切分与动态对齐)
+                               |
+                               v
+                     [ 格式化语料切片 .wav ] （如: B39_愤怒_语料文本.wav）
+                               |
+                               v
+                           (核对无误后)
+                               |
+                               v
+                     (2) remove_cell_prefix.py (一键去前缀/废片清理)
+                               |
+                               v
+                     [ 终版干净语料 .wav ] （如: 愤怒_语料文本.wav）
 ```
 
-## 📜 完整脚本
+## 🛠️ 核心功能特性
 
-<details>
-<summary>silence_splitter.py 点击查看完整代码</summary>
+### 1. 自动化智能切分与 Excel 动态命名 (`silence_splitter.py`)
+* **语义区间解析**：自动从长音频文件名（如 `情感列名_起始行-结束行.wav`）中提取并解析 Excel 位置参数。
+* **动态列定位**：首行表头自动检索，精准对齐并定位目标文本列。
+* **VAD 静音断句**：基于振幅阈值与最短静音时长控制，支持首尾留白平滑缓冲。
+* **双向数量校验**：切片数量与 Excel 预期行数不匹配时自动触发 `⚠️ Warning` 警示，防漏切与误切。
+* **故障序号隔离**：支持传入硬编码误读序号，自动隔离为 `[废弃不做重读]` 标记，指针自动下移对齐。
 
-```python
-import argparse
-import numpy as np
-import soundfile as sf
-import re
-from pathlib import Path
-import openpyxl
+### 2. 语料清洗与去前缀工具 (`remove_cell_prefix.py`)
+* **坐标前缀剥离**：一键去除清洗完工语料文件名中的 `B39_` 等单元格坐标前缀。
+* **安全防重名碰撞**：去前缀后若发生重名（如同音字或重读片段），自动启用数字顺延机制（`_1.wav`, `_2.wav`）进行物理重名保护。
+* **一键物理除渣**：支持可选参数，在去前缀的同时彻底删除带有 `[误读废片]` 标志的音频。
 
-# --- 辅助函数 ---
-def get_start_idx_from_stem(stem):
-    match = re.search(r'(\d+)', stem)
-    return int(match.group(1)) if match else 1
+## 📦 环境依赖
 
-def sanitize_filename(name):
-    if name is None: return "EMPTY_CELL"
-    return re.sub(r'[\\/*?:"<>|\s\t\n\r]', '_', str(name)).strip('_')
+由于涉及多模态数据交互，本工具链不依赖复杂的庞大框架（如 Conda 环境），推荐使用 Python 原生 `venv` 进行轻量化管理：
 
-def find_column_by_header(sheet, header_name):
-    for cell in sheet[1]:
-        if cell.value and str(cell.value).strip() == header_name.strip():
-            return cell.column, cell.column_letter
-    return None, None
+```Bash
+# 创建并激活您的虚拟环境
+python -m venv venv
+source venv/bin/activate  # Linux/WSL 2
+# 或 .\venv\Scripts\activate (Windows)
 
-def parse_error_segments(err_str):
-    if not err_str: return set()
-    return set(int(x) for x in re.findall(r'\d+', err_str))
-
-# --- 静音切分算法 ---
-def split_by_silence(mono_data, sample_rate, silence_threshold, min_silence_sec, buffer_sec, min_duration_sec):
-    abs_data = np.abs(mono_data)
-    voice_indices = np.where(abs_data > silence_threshold)[0]
-    if len(voice_indices) == 0: return []
-    gap_samples = int(sample_rate * min_silence_sec)
-    jumps = np.where(np.diff(voice_indices) > gap_samples)[0]
-    starts = np.insert(voice_indices[jumps + 1], 0, voice_indices[0])
-    ends = np.append(voice_indices[jumps], voice_indices[-1])
-    clusters = list(zip(starts, ends))
-    
-    valid_segments = []
-    buffer_samples = int(sample_rate * buffer_sec)
-    for c_start, c_end in clusters:
-        seg_start = max(0, c_start - buffer_samples)
-        seg_end = min(len(mono_data), c_end + buffer_samples)
-        if (seg_end - seg_start) / sample_rate >= min_duration_sec:
-            valid_segments.append((seg_start, seg_end))
-    return valid_segments
-
-# --- 主逻辑 ---
-def process_directory(args):
-    input_path = Path(args.input)
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(exist_ok=True, parents=True)
-    
-    sheet = None
-    target_col_letter = None
-    if args.excel:
-        wb = openpyxl.load_workbook(args.excel, data_only=True)
-        sheet = wb.active
-        _, target_col_letter = find_column_by_header(sheet, args.column_name)
-    
-    error_set = parse_error_segments(args.error_segments)
-    wav_files = [input_path] if input_path.is_file() else sorted(input_path.glob("*.wav"))
-    
-    for file_path in wav_files:
-        print(f"[*] 处理中: {file_path.name}")
-        data, sr = sf.read(file_path)
-        mono_data = data[:, args.channel] if data.ndim > 1 else data
-        current_row = get_start_idx_from_stem(file_path.stem)
-        idx_counter = current_row
-        
-        segments = split_by_silence(mono_data, sr, args.silence_threshold, args.min_silence, args.buffer, args.min_duration)
-        
-        for idx, (seg_start, seg_end) in enumerate(segments, start=1):
-            if idx_counter in error_set:
-                file_name = f"{target_col_letter}{current_row}_[废弃不做重读]_{args.column_name}.wav"
-                sf.write(output_dir / file_name, mono_data[seg_start:seg_end], sr)
-                current_row += 1
-                idx_counter += 1
-                continue
-            
-            val = sanitize_filename(sheet[f"{target_col_letter}{current_row}"].value) if sheet else "Unknown"
-            file_name = f"{target_col_letter}{current_row}_{args.column_name}_{val}.wav"
-            sf.write(output_dir / file_name, mono_data[seg_start:seg_end], sr)
-            current_row += 1
-            idx_counter += 1
-    print("[✔] 任务完成！")
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("input")
-    parser.add_argument("-o", "--output-dir", default="outputs")
-    parser.add_argument("-c", "--channel", type=int, default=0)
-    parser.add_argument("-e", "--excel")
-    parser.add_argument("-cn", "--column-name", default="快乐")
-    parser.add_argument("-err", "--error-segments", default="")
-    parser.add_argument("--silence-threshold", type=float, default=0.02)
-    parser.add_argument("--min-silence", type=float, default=1.5)
-    parser.add_argument("--buffer", type=float, default=0.3)
-    parser.add_argument("--min-duration", type=float, default=1.0)
-    args = parser.parse_args()
-    process_directory(args)
-```
-</details>
-
-<details>
-<summary>rename_rm_prefix.py 点击查看完整代码</summary>
-
-```python
-import argparse
-import re
-from pathlib import Path
-
-def remove_cell_prefix(args):
-    target_dir = Path(args.dir)
-    if not target_dir.exists() or not target_dir.is_dir():
-        print(f"[!] 错误: 找不到指定的文件夹路径 '{target_dir}'")
-        return
-
-    # 匹配模式：形如 B39_快乐_xxx.wav 或 C1251_[误读废片]_xxx.wav
-    # 正则解析：以字母开头，后面紧跟数字，再跟着一个下划线
-    prefix_pattern = re.compile(r'^[A-Za-z]+\d+_(.*)$')
-
-    print(f"[*] 开始扫描目录 '{target_dir.name}' 中的 WAV 切片...")
-    
-    wav_files = sorted(target_dir.glob("*.wav"))
-    success_count = 0
-    skip_count = 0
-
-    for file_path in wav_files:
-        old_name = file_path.name
-        match = prefix_pattern.match(old_name)
-        
-        if match:
-            # 提取去掉前缀后的新名称
-            new_name = match.group(1)
-            
-            # 如果你在核对时保留了带有 [误读废片] 的文件，这里可以顺便过滤掉或者保留
-            if args.drop_error and "[误读废片]" in new_name:
-                print(f"  [-] 自动清理废片: {old_name} -> [物理删除]")
-                file_path.unlink()  # 直接删除误读的废品音频
-                success_count += 1
-                continue
-
-            new_file_path = file_path.with_name(new_name)
-            
-            # 安全防重名碰撞机制
-            if new_file_path.exists():
-                # 如果已经存在同名文件（比如重读片段和废片去前缀后重名），自动加后缀保护
-                counter = 1
-                while new_file_path.exists():
-                    stem = new_file_path.stem
-                    # 如果原先就有 _重读 或 _v2 顺延，没有就加 _counter
-                    new_file_path = file_path.with_name(f"{stem}_{counter}.wav")
-                    counter += 1
-            
-            # 物理执行重命名
-            file_path.rename(new_file_path)
-            print(f"  [✔] 成功清洗: {old_name} -> {new_file_path.name}")
-            success_count += 1
-        else:
-            # 没有匹配到 B39_ 这种前缀的文件，保持原样不动
-            skip_count += 1
-
-    print(f"\n[✔] 重命名任务安全完成！")
-    print(f"    - 成功清洗/处理文件: {success_count} 个")
-    print(f"    - 忽略（无需处理）: {skip_count} 个")
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="一键去除音频切片名中的 Excel 单元格坐标前缀")
-    
-    # 必需参数：切片所在的文件夹
-    parser.add_argument("dir", nargs="?", default="excel_named_wavs", help="切片音频所在的文件夹目录 (默认: excel_named_wavs)")
-    
-    # 可选参数：是否在去前缀的同时，把带有 '[误读废片]' 字样的音频直接物理删除
-    parser.add_argument("--drop-error", action="store_true", help="是否顺便一键彻底删除带有 '[误读废片]' 标志的音频")
-
-    args = parser.parse_args()
-    remove_cell_prefix(args)
-```
-</details>
-
----
-
-## 🚀 使用方法
-
-### 1. 基础切割
-```bash
-python silence_splitter.py input_audio.wav -e data.xlsx -cn 快乐
+# 安装核心音频与数据处理依赖
+pip install openpyxl numpy soundfile
 ```
 
-### 2. 应对“误读且不重读”场景
-当录制者告知序号 `50` 误读且不重读时，脚本会自动跳过对应的 Excel 行，并保留废片供核对：
-```bash
-python silence_splitter.py input_audio.wav -e data.xlsx -cn 快乐 -err 50
+## 🚀 命令行快速参考
+
+### 📑 脚本一：`silence_splitter.py` (切分与对齐)
+
+运行此脚本将根据静音切分长音频，并从 Excel 中提取对应单元格的值作为文件名。
+
+#### 核心参数说明：
+| 参数 (Argument) | 短指令 | 默认值 | 功能描述 |
+| :--- | :--- | :--- | :--- |
+| `input` | 无 | *(必填)* | 输入的 `.wav` 长音频文件或包含多个 WAV 的文件夹路径。 |
+| `--output-dir` | `-o` | `excel_named_wavs` | 切片音频的输出目录。 |
+| `--excel` | `-e` | `None` | 对应的 Excel 文本库路径。 |
+| `--error-segments`| `-err`| `""` | 录制者反馈需要直接废弃的物理切片序号（逗号/空格分隔）。 |
+| `--silence-threshold`| 无 | `0.025` | 声音判定阈值（绝对振幅）。 |
+| `--min-silence` | 无 | `0.5` | 断句所需的最短静音秒数。 |
+
+#### 使用示例：
+
+```Bash
+# 基础批量切分（不带Excel文本映射）
+python silence_splitter.py /path/to/wav_dir/ -o ./output_slices/
+
+# 联动 Excel 实施动态文本命名，并隔离第 12, 15 个故障片段
+python silence_splitter.py ./input_audio/ -e ./corpus_v1.xlsx -err "12 15" --silence-threshold 0.020
 ```
 
-### 3. 核对与清洗
-完成核对后，使用辅助去前缀脚本（如有）去除物理坐标前缀，恢复成标准命名并自动清理废片：
-```bash
-python rename_rm_prefix.py outputs/ --drop-error
+### 🧹 脚本二：`remove_cell_prefix.py` (清洗与归档)
+
+语料核对及 ASR 标注修正完成后，用于快速剥离坐标前缀，使文件名更纯净，方便直接喂入大模型训练。
+
+#### 核心参数说明：
+| 参数 (Argument) | 默认值 | 功能描述 |
+| :--- | :--- | :--- |
+| `dir` | `excel_named_wavs` | 需要清洗的前缀切片所在的文件夹。 |
+| `--drop-error` | `False` (不开启) | 若指定此参数，将顺便彻底物理删除含有 `[误读废片]` 标志的音频。 |
+
+#### 使用示例：
+
+```Bash
+# 仅去掉文件名开头的单元格坐标前缀 (如 B39_愤怒_xxx.wav -> 愤怒_xxx.wav)
+python remove_cell_prefix.py ./output_slices/
+
+# 去前缀的同时，一键物理删除所有核对出的“误读废片”
+python remove_cell_prefix.py ./output_slices/ --drop-error
 ```
 
----
+## 📂 文件命名规范与系统安全性
 
-## 💡 特性总结
-* **精准溯源**：切片名强制附带 `B39_` 等单元格坐标，听感核对时无需查找 Excel。
-* **防错位机制**：通过 `-err` 传入序号，彻底解决误读导致的后续语料错位问题。
-* **物理隔离**：废弃片段被明确标记，并支持一键自动化物理销毁。
+1. **非法字符过滤**：`silence_splitter.py` 内置 `sanitize_filename` 模块，自动将 Excel 文本中包含的 Windows/Linux 文件系统非法字符（如 `\ / * ? : < > |` 及换行符、制表符）自动无缝替换为下划线 `_`，防止写入报错。
+2. **崩溃保护**：去前缀脚本 `remove_cell_prefix.py` 具有安全重名碰撞机制，绝不发生代码执行覆盖，确保语料资产 100% 物理安全。
