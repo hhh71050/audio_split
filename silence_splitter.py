@@ -122,6 +122,10 @@ def process_directory(args):
         col_name, start_row, end_row = parse_filename(file_path.stem)
         expected_count = (end_row - start_row + 1) if end_row else None
         
+        # 创建以列名（如“愤怒”）命名的子文件夹
+        sub_dir = output_dir / col_name
+        sub_dir.mkdir(exist_ok=True, parents=True)
+        
         # 2. 动态匹配 Excel 目标列
         target_col_letter = None
         if sheet:
@@ -171,13 +175,12 @@ def process_directory(args):
             if idx_counter in error_set:
                 if target_col_letter:
                     cell_coord = f"{target_col_letter}{current_row}"
-                    # 此时它对应的依然是当前行文本，但它是废片
-                    file_name = f"{cell_coord}_[废弃不做重读]_{col_name}.wav"
+                    file_name = f"{cell_coord}_[废弃不做重读].wav"
                 else:
-                    file_name = f"Row{current_row}_[废弃不做重读]_{col_name}.wav"
+                    file_name = f"Row{current_row}_[废弃不做重读].wav"
 
-                sf.write(output_dir / file_name, final_seg, sample_rate)
-                print(f"    [!] 片段 {idx} 属于废弃不重读行 (序号 {idx_counter}) -> 已隔离为: {file_name}")
+                sf.write(sub_dir / file_name, final_seg, sample_rate)
+                print(f"    [!] 片段 {idx} 属于废弃不重读行 (序号 {idx_counter}) -> 已隔离为: {col_name}/{file_name}")
 
                 # 让 Excel 指针同步向下移动一行，去对齐接下来的正常音频！
                 current_row += 1
@@ -190,14 +193,14 @@ def process_directory(args):
                 raw_cell_value = sheet[cell_coord].value
                 cell_value = sanitize_filename(raw_cell_value)
 
-                # 把单元格坐标名称框拼接到最前面
-                file_name = f"{cell_coord}_{col_name}_{cell_value}.wav"
-                log_msg = f"    [+] 导出第 {idx} 个切片: {file_name}"
+                # 去除 col_name，直接使用坐标和单元格内容
+                file_name = f"{cell_coord}_{cell_value}.wav"
+                log_msg = f"    [+] 导出第 {idx} 个切片: {col_name}/{file_name}"
             else:
-                file_name = f"{col_name}_Row{current_row}_Idx{idx:02d}.wav"
-                log_msg = f"    [+] 导出: {file_name}"
+                file_name = f"Row{current_row}_Idx{idx:02d}.wav"
+                log_msg = f"    [+] 导出: {col_name}/{file_name}"
 
-            sf.write(output_dir / file_name, final_seg, sample_rate)
+            sf.write(sub_dir / file_name, final_seg, sample_rate)
             print(log_msg)
 
             current_row += 1
