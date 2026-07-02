@@ -169,7 +169,7 @@ def process_directory(args):
         idx_counter = start_row      # 控制当前切片的名义物理序号
 
         for idx, (seg_start, seg_end) in enumerate(segments, start=1):
-            final_seg = mono_data[seg_start:seg_end]
+            final_seg = mono_data[seg_start:seg_end] # data[seg_start:seg_end] if you want to keep all channels
 
             # 当前物理序号是录制者告知的“直接废弃不做重读”的序号
             if idx_counter in error_set:
