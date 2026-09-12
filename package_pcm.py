@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-import os
 import zipfile
 import argparse
 from pathlib import Path
+
 
 def package_pcm_segments(input_dir: str, output_zip: str, exclude_keywords: list = None):
     if exclude_keywords is None:

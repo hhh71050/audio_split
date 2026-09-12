@@ -2,10 +2,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
-as_env/
+venv/
 .env
 .venv
 env/
+requirements.txt
 
 # --- 操作系统/编辑器生成 ---
 .DS_Store
@@ -15,6 +16,9 @@ env/
 
 # --- 自定义屏蔽的文件夹 ---
 records/
-excel_named_wavs/
+slices/
+_coro/
+tts/
 *.xlsx
-excel_named_wavs.zip
+*.txt
+*.csv

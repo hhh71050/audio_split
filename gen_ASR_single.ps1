@@ -1,0 +1,1 @@
+edge-tts --text "你好，欢迎使用语音助手。" --voice zh-CN-YunxiNeural --write-media output.wav
