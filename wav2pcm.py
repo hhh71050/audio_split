@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-WAV 转多声道 PCM 还原脚本（内存优化版）
+WAV 转多声道 PCM 脚本（内存优化版）
 - 使用 io.BytesIO 和标准库 wave，避免 pydub/ffmpeg 子进程与临时文件开销
 - NumPy 矩阵向量化运算，内存中瞬间完成 14 声道扩充与衰减计算
 - 支持管道/字节流处理与批量磁盘文件还原
@@ -83,7 +83,7 @@ def main():
         description="将单声道 WAV 批量还原为多声道 PCM (内存加速版)"
     )
     parser.add_argument("-i", "--input", required=True, help="输入 WAV 文件或文件夹路径")
-    parser.add_argument("-o", "--output-dir", default="restored_pcm", help="PCM 输出目录")
+    parser.add_argument("-o", "--output-dir", default="tts/pcm", help="PCM 输出目录")
     parser.add_argument("-c", "--channels", type=int, default=14, help="总声道数")
     parser.add_argument("-a", "--active-channels", type=int, default=6, help="发声声道数")
     parser.add_argument("-d", "--decay", type=float, default=0.62, help="声道衰减系数")

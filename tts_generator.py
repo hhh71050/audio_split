@@ -145,7 +145,7 @@ async def main_async(args):
     print(f"[*] 共读取 {len(lines)} 条文本 | 输出目录: {out_dir}")
     print(f"[*] 音色: {args.voice} | 语速: {args.rate}")
     print(f"[*] 输出格式: 16kHz / 16-bit / Mono WAV")
-    print(f"[*] 首尾 Padding: {args.padding_ms}ms | 峰值归一: {args.ratio if args.ratio else '不归一'}")
+    print(f"[*] 首尾 Padding: {args.padding_ms}ms | 峰值归一: {args.ratio if args.ratio is not None else '不归一'}")
     if args.no_prefix:
         print("[*] 序号前缀: 已关闭 (直接以文本内容命名)")
     else:
@@ -209,13 +209,13 @@ async def main_async(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="TTS 批量生成 Mono WAV 工具")
     parser.add_argument("-i", "--input", required=True, help="输入的 TXT 文件路径")
-    parser.add_argument("-o", "--output-dir", default="tts/wav/", help="输出文件夹 (默认: tts/wav/)")
+    parser.add_argument("-o", "--output-dir", default="tts/", help="输出文件夹 (默认: tts/)")
     parser.add_argument("-v", "--voice", default="zh-CN-YunxiNeural", help="Edge-TTS 音色")
-    parser.add_argument("-r", "--rate", default="-5%", help="语速")
+    parser.add_argument("-r", "--rate", default="-7%", help="语速")
 
     # --- 音频参数 ---
     parser.add_argument("--padding-ms", type=int, default=1500, help="首尾静音毫秒 (默认: 1500)")
-    parser.add_argument("--ratio", type=float, default=0.9, help="峰值归一化比例 (默认: 0.9，设为 0 则不做归一化)")
+    parser.add_argument("--ratio", type=float, default=None, help="峰值归一化比例 (默认不归一)")
 
     # --- 文件名序号参数 ---
     parser.add_argument("-s", "--start-idx", type=int, default=1, help="行内无序号时的起始序号")
