@@ -146,10 +146,10 @@ async def main_async(args):
     print(f"[*] 音色: {args.voice} | 语速: {args.rate}")
     print(f"[*] 输出格式: 16kHz / 16-bit / Mono WAV")
     print(f"[*] 首尾 Padding: {args.padding_ms}ms | 峰值归一: {args.ratio if args.ratio else '不归一'}")
-    if args.no_prefix:
-        print("[*] 序号前缀: 已关闭 (直接以文本内容命名)")
-    else:
+    if args.prefix_enabled:
         print(f"[*] 序号前缀: 开启 (保留 {args.digits} 位数字)")
+    else:
+        print("[*] 序号前缀: 已关闭 (直接以文本内容命名)")
 
     total_start = time.perf_counter()
     stats = {"ok": 0, "skip": 0, "fail": 0}
@@ -167,11 +167,11 @@ async def main_async(args):
 
         # 2. 生成文件名
         safe_name = sanitize_filename(text)
-        if args.no_prefix:
-            file_name = f"{safe_name}.wav"
-        else:
+        if args.prefix_enabled:
             prefix = str(seq_num).zfill(args.digits)
             file_name = f"{prefix}_{safe_name}.wav"
+        else:
+            file_name = f"{safe_name}.wav"
 
         out_path = out_dir / file_name
 
@@ -218,9 +218,12 @@ if __name__ == "__main__":
     parser.add_argument("--ratio", type=float, default=0.9, help="峰值归一化比例 (默认: 0.9，设为 0 则不做归一化)")
 
     # --- 文件名序号参数 ---
-    parser.add_argument("-s", "--start-idx", type=int, default=1, help="行内无序号时的起始序号")
-    parser.add_argument("-d", "--digits", type=int, default=4, help="序号前缀补零位数 (默认: 4)")
-    parser.add_argument("--no-prefix", action="store_true", help="关闭文件名前缀序号")
+    prefix_group = parser.add_mutually_exclusive_group()
+    prefix_group.add_argument("--prefix", dest="prefix_enabled", action="store_true", help="为文件名添加序号前缀 (默认关闭)")
+    prefix_group.add_argument("--no-prefix", dest="prefix_enabled", action="store_false", help="关闭文件名前缀序号 (默认)")
+    parser.set_defaults(prefix_enabled=False)
+    parser.add_argument("-s", "--start-idx", type=int, default=1, help="行内无序号时的起始序号 (默认: 1)")
+    parser.add_argument("-d", "--digits", type=int, default=3, help="序号前缀补零位数 (默认: 3)")
 
     # --- 超时控制与模式 ---
     parser.add_argument("--timeout", type=int, default=38, help="单条超时秒数")
