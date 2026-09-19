@@ -218,10 +218,7 @@ if __name__ == "__main__":
     parser.add_argument("--ratio", type=float, default=0.9, help="峰值归一化比例 (默认: 0.9，设为 0 则不做归一化)")
 
     # --- 文件名序号参数 ---
-    prefix_group = parser.add_mutually_exclusive_group()
-    prefix_group.add_argument("--prefix", dest="prefix_enabled", action="store_true", help="为文件名添加序号前缀 (默认关闭)")
-    prefix_group.add_argument("--no-prefix", dest="prefix_enabled", action="store_false", help="关闭文件名前缀序号 (默认)")
-    parser.set_defaults(prefix_enabled=False)
+    parser.add_argument("--prefix", dest="prefix_enabled", action="store_true", help="为文件名添加序号前缀 (默认关闭)")
     parser.add_argument("-s", "--start-idx", type=int, default=1, help="行内无序号时的起始序号 (默认: 1)")
     parser.add_argument("-d", "--digits", type=int, default=3, help="序号前缀补零位数 (默认: 3)")
 
